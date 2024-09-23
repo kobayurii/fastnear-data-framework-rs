@@ -14,9 +14,8 @@ impl FastNearClient {
 
     pub async fn get_object(
         &self,
-        block_height: crate::types::BlockHeight,
-    ) -> Result<crate::types::FastNearData, crate::types::FastNearError> {
-        let url = format!("{}/v0/block/{}", self.endpoint, block_height);
+        url: String,
+    ) -> Result<Option<near_indexer_primitives::StreamerMessage>, crate::types::FastNearError> {
         let response = self.client.get(&url).send().await?;
         match response.status().as_u16() {
             200 => {
@@ -25,17 +24,11 @@ impl FastNearClient {
                     .await
                     .map_err(|err| crate::types::FastNearError::UnknownError(err.to_string()))?;
                 if json.is_null() {
-                    Ok(crate::types::FastNearData {
-                        block_height,
-                        data: None,
-                    })
+                    Ok(None)
                 } else {
-                    Ok(crate::types::FastNearData {
-                        block_height,
-                        data: serde_json::from_value(json).map_err(|err| {
+                    Ok(serde_json::from_value(json).map_err(|err| {
                             crate::types::FastNearError::UnknownError(err.to_string())
-                        })?,
-                    })
+                        })?)
                 }
             }
             404 => {
@@ -53,12 +46,41 @@ impl FastNearClient {
         }
     }
 
+    pub async fn fetch_block_until_success(
+        &self,
+        url: &str,
+        timeout: Duration,
+    ) -> Option<near_indexer_primitives::StreamerMessage> {
+        loop {
+            match fetch_block(client, url, timeout).await {
+                Ok(block) => return block,
+                Err(FetchError::ReqwestError(err)) => {
+                    tracing::warn!(target: LOG_TARGET, "Failed to fetch block: {}", err);
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+            }
+        }
+    }
+
+    pub async fn get_last_block(
+        &self,
+    ) -> Result<near_indexer_primitives::StreamerMessage, crate::types::FastNearError> {
+        let url = format!("{}/v0/last_block/final", self.endpoint);
+        let fast_near_data = self.get_object(url).await?;
+        if let Some(data) = fast_near_data {
+            Ok(data)
+        } else {
+            Err(crate::types::FastNearError::BlockDoesNotExist("Block final does not exist".to_string()))
+        }
+    }
+
     pub async fn get_streamer_message(
         &self,
         block_height: crate::types::BlockHeight,
     ) -> Result<near_indexer_primitives::StreamerMessage, crate::types::FastNearError> {
-        let fast_near_data = self.get_object(block_height).await?;
-        if let Some(data) = fast_near_data.data {
+        let url = format!("{}/v0/block/{}", self.endpoint, block_height);
+        let fast_near_data = self.get_object(url).await?;
+        if let Some(data) = fast_near_data {
             Ok(data)
         } else {
             Err(crate::types::FastNearError::BlockDoesNotExist(format!(
@@ -68,13 +90,14 @@ impl FastNearClient {
         }
     }
 
-    pub async fn get_block(
+    pub async fn get_block_by_height(
         &self,
         block_height: crate::types::BlockHeight,
-    ) -> Result<near_indexer_primitives::views::BlockView, crate::types::FastNearError> {
-        let fast_near_data = self.get_object(block_height).await?;
-        if let Some(data) = fast_near_data.data {
-            Ok(data.block)
+    ) -> Result<near_indexer_primitives::StreamerMessage, crate::types::FastNearError> {
+        let url = format!("{}/v0/block/{}", self.endpoint, block_height);
+        let fast_near_data = self.get_object(url).await?;
+        if let Some(data) = fast_near_data {
+            Ok(data)
         } else {
             Err(crate::types::FastNearError::BlockDoesNotExist(format!(
                 "Block {} does not exist",
@@ -88,8 +111,9 @@ impl FastNearClient {
         block_height: crate::types::BlockHeight,
         shard_id: u64,
     ) -> Result<near_indexer_primitives::IndexerShard, crate::types::FastNearError> {
-        let fast_near_data: crate::types::FastNearData = self.get_object(block_height).await?;
-        if let Some(data) = fast_near_data.data {
+        let url = format!("{}/v0/block/{}", self.endpoint, block_height);
+        let fast_near_data = self.get_object(url).await?;
+        if let Some(data) = fast_near_data {
             Ok(data
                 .shards
                 .iter()
