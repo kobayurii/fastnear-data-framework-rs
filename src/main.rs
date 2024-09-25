@@ -16,7 +16,6 @@ pub async fn handle_streamer_message(
         .remove(&streamer_message.block.header.height);
     stats_lock.blocks_processed_count += 1;
     stats_lock.last_processed_block_height = streamer_message.block.header.height;
-
     Ok(())
 }
 
@@ -27,7 +26,7 @@ async fn main() -> anyhow::Result<()> {
 
     let config = fastnear_data_framework::FastNearConfigBuilder::default()
         .mainnet()
-        .start_block_height(128270000)
+        .start_block_height(127792400)
         .build()
         .expect("Failed to build FastNearConfig");
 
@@ -49,7 +48,8 @@ async fn main() -> anyhow::Result<()> {
 
     // propagate errors from the sender
     match sender.await {
-        Ok(()) => Ok(()),
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => Err(e),
         Err(e) => Err(anyhow::Error::from(e)), // JoinError
     }
 }
@@ -64,7 +64,6 @@ pub struct Stats {
 pub async fn state_logger(stats: std::sync::Arc<tokio::sync::RwLock<Stats>>) {
     let interval_secs = 10;
     let mut prev_blocks_processed_count: u64 = 0;
-
     loop {
         tokio::time::sleep(std::time::Duration::from_secs(interval_secs)).await;
         let stats_lock = stats.read().await;
@@ -73,7 +72,7 @@ pub async fn state_logger(stats: std::sync::Arc<tokio::sync::RwLock<Stats>>) {
             - prev_blocks_processed_count) as f64)
             / (interval_secs as f64);
 
-        tracing::info!(
+        println!(
             "# {} | Blocks processing: {}| Blocks done: {}. Bps {:.2} b/s",
             stats_lock.last_processed_block_height,
             stats_lock.block_heights_processing.len(),
