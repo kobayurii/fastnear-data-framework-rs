@@ -5,29 +5,33 @@ mod fetchers;
 mod types;
 mod client;
 
-pub use types::{FastNearConfig, FastNearConfigBuilder, FastNearError};
+pub use types::{FastNearConfig, FastNearConfig2, FastNearConfigBuilder, FastNearError};
 use crate::types::Config;
 
 pub fn streamer(
-    config: impl Config,
+    config: &dyn Config,
 ) -> (
     tokio::task::JoinHandle<Result<(), anyhow::Error>>,
     tokio::sync::mpsc::Receiver<near_indexer_primitives::StreamerMessage>,
 ) {
     let (sender, receiver) = tokio::sync::mpsc::channel(100);
-
-    match config {
-        ref FastNearConfig => {
-            (tokio::spawn(start(sender, config)), receiver)
-        }
-        ref FastNearConfig2 => {
-            (tokio::spawn(start(sender, config)), receiver)
-        }
+    if let Some(conf) = config.as_any().downcast_ref::<FastNearConfig>() {
+        (tokio::spawn(start(sender, conf.clone())), receiver)
+    } else if let Some(conf) = config.as_any().downcast_ref::<FastNearConfig2>() {
+        (tokio::spawn(start2(sender, conf.clone())), receiver)
+    } else {
+        panic!("Invalid config type");
     }
-    // (tokio::spawn(start(sender, config)), receiver)
 }
 
 const LOG_TARGET: &str = "fastnear-neardata";
+
+pub async fn start2(
+    _blocks_sink: tokio::sync::mpsc::Sender<near_indexer_primitives::StreamerMessage>,
+    _config: FastNearConfig2,
+) -> anyhow::Result<()> {
+    todo!("Implement me")
+}
 
 pub async fn start(
     blocks_sink: tokio::sync::mpsc::Sender<near_indexer_primitives::StreamerMessage>,

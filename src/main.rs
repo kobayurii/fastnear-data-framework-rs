@@ -30,7 +30,7 @@ async fn main() -> anyhow::Result<()> {
         .build()
         .expect("Failed to build FastNearConfig");
 
-    let (sender, stream) = fastnear_data_framework::streamer(config);
+    let (sender, stream) = fastnear_data_framework::streamer(&config);
 
     let mut handlers = tokio_stream::wrappers::ReceiverStream::new(stream)
         .map(|streamer_message| {

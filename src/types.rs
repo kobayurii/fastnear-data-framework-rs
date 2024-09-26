@@ -15,7 +15,7 @@ pub type BlockHeight = u64;
 ///        .expect("Failed to build FastNearConfig");
 /// # }
 /// ```
-#[derive(Default, Builder, Debug)]
+#[derive(Default, Builder, Debug, Clone)]
 #[builder(pattern = "owned")]
 pub struct FastNearConfig {
     /// Fastnear data endpoint
@@ -86,23 +86,32 @@ fn num_threads_default() -> u64 {
     threads * 2
 }
 
+#[derive(Clone, Debug)]
 pub struct FastNearConfig2 {
     /// Fastnear data endpoint
-    #[builder(setter(into))]
     pub(crate) endpoint: String,
     /// Defines the block height to start indexing from
     pub(crate) start_block_height: u64,
     /// Number of threads to use for fetching data
     /// Default: 2 * available threads
-    #[builder(default = "num_threads_default()")]
     pub(crate) num_threads: u64,
 }
 
 
-pub trait Config {}
+pub trait Config: std::any::Any {
+    fn as_any(&self) -> &dyn std::any::Any;
+}
 
-impl Config for FastNearConfig {}
-impl Config for FastNearConfig2 {}
+impl Config for FastNearConfig {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+impl Config for FastNearConfig2 {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum FastNearError {
